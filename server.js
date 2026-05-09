@@ -8,24 +8,22 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => {
+    res.send("API Running");
+});
+
 app.post("/scrape", async (req, res) => {
     try {
 
-        console.log("BODY:", req.body);
-
         const { website } = req.body;
 
-        console.log("WEBSITE:", website);
-
         const data = await scrapeWebsite(website);
-
-        console.log("RESULT:", data);
 
         res.json(data);
 
     } catch (error) {
 
-        console.log("ERROR:", error);
+        console.log(error);
 
         res.status(500).json({
             error: "Scraping failed"
@@ -33,6 +31,8 @@ app.post("/scrape", async (req, res) => {
     }
 });
 
-app.listen(3000, () => {
-    console.log("Server running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
