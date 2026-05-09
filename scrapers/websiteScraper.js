@@ -1,0 +1,227 @@
+const axios = require("axios");
+const cheerio = require("cheerio");
+
+async function extractEmails(text) {
+
+    const emailRegex =
+        /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+    return [...new Set(text.match(emailRegex) || [])];
+}
+
+async function extractPhones(text) {
+
+    const phoneRegex =
+        /(\+?\d[\d\s\-()]{7,}\d)/g;
+
+    return [...new Set(text.match(phoneRegex) || [])];
+}
+
+async function fetchPage(url) {
+
+    try {
+
+        const response = await axios.get(url, {
+            timeout: 15000,
+            headers: {
+                "User-Agent": "Mozilla/5.0"
+            }
+        });
+
+        return response.data;
+
+    } catch (error) {
+
+        console.log("FETCH ERROR:", url);
+
+        return "";
+    }
+}
+
+async function scrapeWebsite(url) {
+
+    try {
+
+        if (!url || url.trim() === "") {
+            return {
+                success: false,
+                error: "Empty URL"
+            };
+        }
+
+        if (!url.startsWith("http")) {
+            url = "https://" + url;
+        }
+
+        let allEmails = [];
+
+        let linkedin = "";
+        let instagram = "";
+        let facebook = "";
+        let twitter = "";
+        let youtube = "";
+        let phones = [];
+
+        // =========================
+        // HOMEPAGE
+        // =========================
+
+        const homepageHtml = await fetchPage(url);
+
+        const $ = cheerio.load(homepageHtml);
+
+        const homepageText = $("body").text();
+
+        const homepageEmails =
+            await extractEmails(homepageText);
+
+        allEmails.push(...homepageEmails);
+
+        const homepagePhones =
+            await extractPhones(homepageText);
+
+        phones.push(...homepagePhones);
+
+        // =========================
+        // IMPORTANT PAGES
+        // =========================
+
+        const importantKeywords = [
+            "contact",
+            "contact-us",
+            "about",
+            "about-us",
+            "support",
+            "team",
+            "company",
+            "help",
+            "connect",
+            "reach-us",
+            "customer-service",
+            "careers",
+            "office",
+            "locations"
+        ];
+
+        let links = [];
+
+        $("a").each((i, el) => {
+
+            const href = $(el).attr("href");
+
+            if (href) {
+
+                links.push(href);
+
+                // EXTRACT MAILTO EMAILS
+                if (href.startsWith("mailto:")) {
+
+                    const email =
+                        href.replace("mailto:", "");
+
+                    allEmails.push(email);
+                }
+
+                // LINKEDIN
+                if (href.includes("linkedin.com")) {
+                    linkedin = href;
+                }
+
+                // INSTAGRAM
+                if (href.includes("instagram.com")) {
+                    instagram = href;
+                }
+
+                // FACEBOOK
+                if (href.includes("facebook.com")) {
+                    facebook = href;
+                }
+
+                // TWITTER / X
+                if (
+                    href.includes("twitter.com") ||
+                    href.includes("x.com")
+                ) {
+                    twitter = href;
+                }
+
+                // YOUTUBE
+                if (href.includes("youtube.com")) {
+                    youtube = href;
+                }
+            }
+        });
+
+        // REMOVE DUPLICATES
+        links = [...new Set(links)];
+
+        // FILTER IMPORTANT LINKS
+        const filteredLinks = links.filter(link => {
+
+            return importantKeywords.some(keyword =>
+                link.toLowerCase().includes(keyword)
+            );
+        });
+
+        // =========================
+        // VISIT IMPORTANT PAGES
+        // =========================
+
+        for (const link of filteredLinks.slice(0, 5)) {
+
+            let fullUrl = "";
+
+            if (link.startsWith("http")) {
+                fullUrl = link;
+            } else {
+                fullUrl =
+                    url.replace(/\/$/, "") +
+                    "/" +
+                    link.replace(/^\//, "");
+            }
+
+            console.log("VISITING:", fullUrl);
+
+            const pageHtml = await fetchPage(fullUrl);
+
+            const $$ = cheerio.load(pageHtml);
+
+            const pageText = $$("body").text();
+
+            const pageEmails =
+                await extractEmails(pageText);
+
+            allEmails.push(...pageEmails);
+        }
+
+        // REMOVE DUPLICATES
+        allEmails = [...new Set(allEmails)];
+
+        return {
+            success: true,
+            website: url,
+            emails: [...new Set(allEmails)],
+            linkedin,
+            instagram,
+            facebook,
+            twitter,
+            youtube,
+            phones: [...new Set(phones)]
+        };
+
+    } catch (error) {
+
+        console.log("SCRAPER ERROR:", error.message);
+
+        return {
+            success: false,
+            website: url,
+            emails: [],
+            error: error.message
+        };
+    }
+}
+
+module.exports = {
+    scrapeWebsite
+};
